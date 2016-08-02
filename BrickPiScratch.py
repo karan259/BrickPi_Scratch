@@ -65,6 +65,7 @@ if ir_receiver_check.check_ir():
 
 debug=1     #Enable or disable debug message mode
 updateSensorValueRunning=0      #Flag to run or not run the updateSensorValue()
+setup_done= False
 
 try:
     s = scratch.Scratch()
@@ -168,13 +169,19 @@ while True:
 
         msg = m[1].upper()
         if msg == 'SETUP' :
+            # updateSensorValueRunning=1
+            # sensor = [ None, False , False , False , False ]
+            # spec = [ None, 0 , 0 , 0 , 0 ]
+            BrickPiSetup()
             BrickPiSetupSensors()
             running = True
+            setup_done = True
             print "running",running,thread1.is_alive()
             if thread1.is_alive() == False:
                 thread1.start()  # this removes the need for the START broadcast
             print "BrickPi Scratch: Setting up sensors done"
             print BrickPi.SensorType
+            # updateSensorValueRunning=0
         elif msg == 'START' :
             running = True
             if thread1.is_alive() == False:
@@ -207,67 +214,75 @@ while True:
                             print "norm:",sensorbroadcasts[i],BrickPi.Sensor[PORT_1+i],"\n"
             s.broadcast('UPDATED')
 
-        elif msg[:2] in sensorbroadcasts:
-            whichsensor = sensorbroadcasts.index(msg[:2])
-            if msg[2:].strip() == 'FLEX' :
-                spec[whichsensor] = 1
-            elif msg[2:].strip() == 'TEMP' :
-                spec[whichsensor] = 2
-            BrickPi.SensorType[whichsensor+PORT_1] = stype[msg[2:].strip()]
-            sensor[whichsensor]=True
+        else:
+            if setup_done == True:
+                setup_done = False
+                sensor = [ None, False , False , False , False ]
+                spec = [ None, 0 , 0 , 0 , 0 ]
+                BrickPi.SensorType = [0] * 4
+                BrickPi.MotorEnable = [0] * 4
+                BrickPi.MotorSpeed = [0] * 4
+            if msg[:2] in sensorbroadcasts:
+                whichsensor = sensorbroadcasts.index(msg[:2])
+                if msg[2:].strip() == 'FLEX' :
+                    spec[whichsensor] = 1
+                elif msg[2:].strip() == 'TEMP' :
+                    spec[whichsensor] = 2
+                BrickPi.SensorType[whichsensor+PORT_1] = stype[msg[2:].strip()]
+                sensor[whichsensor]=True
 
-        # elif msg[:2] == 'S1' :
-        #     if msg[2:].strip() == 'FLEX' :
-        #         spec[1] = 1
-        #     elif msg[2:].strip() == 'TEMP' :
-        #         spec[1] = 2
-        #     BrickPi.SensorType[PORT_1] = stype[msg[2:].strip()]
-        #     sensor[1] = True
-        # elif msg[:2] == 'S2' :
-        #     if msg[2:].strip() == 'FLEX' :
-        #         spec[2] = 1
-        #     elif msg[2:].strip() == 'TEMP' :
-        #         spec[2] = 2
-        #     BrickPi.SensorType[PORT_2] = stype[msg[2:].strip()]
-        #     sensor[2] = True
-        # elif msg[:2] == 'S3' :
-        #     if msg[2:].strip() == 'FLEX' :
-        #         spec[3] = 1
-        #     elif msg[2:].strip() == 'TEMP' :
-        #         spec[3] = 2
-        #     BrickPi.SensorType[PORT_3] = stype[msg[2:].strip()]
-        #     sensor[3] = True
-        # elif msg[:2] == 'S4' :
-        #     if msg[2:].strip() == 'FLEX' :
-        #         spec[4] = 1
-        #     elif msg[2:].strip() == 'TEMP' :
-        #         spec[4] = 2
-        #     BrickPi.SensorType[PORT_4] = stype[msg[2:].strip()]
-        #     sensor[4] = True
-        elif msg == 'MA E' or msg == 'MAE' :
-            BrickPi.MotorEnable[PORT_A] = 1
-        elif msg == 'MB E' or msg == 'MBE' :
-            BrickPi.MotorEnable[PORT_B] = 1
-        elif msg == 'MC E' or msg == 'MCE' :
-            BrickPi.MotorEnable[PORT_C] = 1
-        elif msg == 'MD E' or msg == 'MDE' :
-            BrickPi.MotorEnable[PORT_D] = 1
-        elif msg == 'MA D' or msg == 'MAD' :
-            BrickPi.MotorEnable[PORT_A] = 0
-        elif msg == 'MB D' or msg == 'MBD' :
-            BrickPi.MotorEnable[PORT_B] = 0
-        elif msg == 'MC D' or msg == 'MCD' :
-            BrickPi.MotorEnable[PORT_C] = 0
-        elif msg == 'MD D' or msg == 'MDD' :
-            BrickPi.MotorEnable[PORT_D] = 0
-        elif msg[:2] == 'MA' :
-            BrickPi.MotorSpeed[PORT_A] = int(msg[2:])
-        elif msg[:2] == 'MB' :
-            BrickPi.MotorSpeed[PORT_B] = int(msg[2:])
-        elif msg[:2] == 'MC' :
-            BrickPi.MotorSpeed[PORT_C] = int(msg[2:])
-        elif msg[:2] == 'MD' :
-            BrickPi.MotorSpeed[PORT_D] = int(msg[2:])
+            # elif msg[:2] == 'S1' :
+            #     if msg[2:].strip() == 'FLEX' :
+            #         spec[1] = 1
+            #     elif msg[2:].strip() == 'TEMP' :
+            #         spec[1] = 2
+            #     BrickPi.SensorType[PORT_1] = stype[msg[2:].strip()]
+            #     sensor[1] = True
+            # elif msg[:2] == 'S2' :
+            #     if msg[2:].strip() == 'FLEX' :
+            #         spec[2] = 1
+            #     elif msg[2:].strip() == 'TEMP' :
+            #         spec[2] = 2
+            #     BrickPi.SensorType[PORT_2] = stype[msg[2:].strip()]
+            #     sensor[2] = True
+            # elif msg[:2] == 'S3' :
+            #     if msg[2:].strip() == 'FLEX' :
+            #         spec[3] = 1
+            #     elif msg[2:].strip() == 'TEMP' :
+            #         spec[3] = 2
+            #     BrickPi.SensorType[PORT_3] = stype[msg[2:].strip()]
+            #     sensor[3] = True
+            # elif msg[:2] == 'S4' :
+            #     if msg[2:].strip() == 'FLEX' :
+            #         spec[4] = 1
+            #     elif msg[2:].strip() == 'TEMP' :
+            #         spec[4] = 2
+            #     BrickPi.SensorType[PORT_4] = stype[msg[2:].strip()]
+            #     sensor[4] = True
+            elif msg == 'MA E' or msg == 'MAE' :
+                BrickPi.MotorEnable[PORT_A] = 1
+            elif msg == 'MB E' or msg == 'MBE' :
+                BrickPi.MotorEnable[PORT_B] = 1
+            elif msg == 'MC E' or msg == 'MCE' :
+                BrickPi.MotorEnable[PORT_C] = 1
+            elif msg == 'MD E' or msg == 'MDE' :
+                BrickPi.MotorEnable[PORT_D] = 1
+            elif msg == 'MA D' or msg == 'MAD' :
+                BrickPi.MotorEnable[PORT_A] = 0
+            elif msg == 'MB D' or msg == 'MBD' :
+                BrickPi.MotorEnable[PORT_B] = 0
+            elif msg == 'MC D' or msg == 'MCD' :
+                BrickPi.MotorEnable[PORT_C] = 0
+            elif msg == 'MD D' or msg == 'MDD' :
+                BrickPi.MotorEnable[PORT_D] = 0
+            elif msg[:2] == 'MA' :
+                BrickPi.MotorSpeed[PORT_A] = int(msg[2:])
+            elif msg[:2] == 'MB' :
+                BrickPi.MotorSpeed[PORT_B] = int(msg[2:])
+            elif msg[:2] == 'MC' :
+                BrickPi.MotorSpeed[PORT_C] = int(msg[2:])
+            elif msg[:2] == 'MD' :
+                BrickPi.MotorSpeed[PORT_D] = int(msg[2:])
     except KeyboardInterrupt:
         running= False
         print "BrickPi Scratch: Disconnected from Scratch"
