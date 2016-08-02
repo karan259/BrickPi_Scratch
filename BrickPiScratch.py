@@ -25,32 +25,46 @@
 
 # Setting Sensor type:
 
-# S1 ULTRASONIC 
-# S2 TOUCH
-# S3 RAW
-# S4 COLOR
-# S3 FLEX
-# S5 TEMP
-# Note: Only these sensors are supported as of now. The first 4 are lego products while the last 2 are from DexterIndustries
+# ULTRASONIC 
+# TOUCH
+# COLOR
+# EV3 ULTRASONIC
+# EV3 TOUCH
+# EV3 COLOR
+# EV3 GYRO
+# EV3 INFRARED
+# RAW
+# FLEX
+# TEMP
+# Note: Only these sensors are supported as of now. They are lego products except for the last 2 which are from DexterIndustries
 
 # Enabling and Running Motors:
-
+# Enabling motors is no longer necessary
 # MA E - Enable motor A
 # MB D - Disable motor B
 # MA 100 - Set MotorA speed to 100
 # MB -50 - Set MotorB speed to -100
 
 
-import scratch,sys,threading,math
+import scratch,sys
+import math
+import threading
+
 from BrickPi import *
 import ir_receiver_check
 
+class SetupNotRunError(Exception):
+    pass
+    
 if ir_receiver_check.check_ir():
 	print "Disable IR receiver before continuing!"
 	print "Disable IR receiver before continuing!"
 	print "Disable IR receiver before continuing!"
 	print "Disable IR receiver before continuing!"	
 	exit() 
+
+debug=1     #Enable or disable debug message mode
+updateSensorValueRunning=0      #Flag to run or not run the updateSensorValue()
 
 try:
     s = scratch.Scratch()
@@ -68,8 +82,11 @@ except scratch.ScratchError:
 
 sensor = [ None, False , False , False , False ]
 spec = [ None, 0 , 0 , 0 , 0 ]
+running = False
+sensorbroadcasts=["S1","S2","S3","S4"]
 
-stype = { 'EV3US' : TYPE_SENSOR_EV3_US_M0,		# Continuous measurement, distance, cm
+stype = { 
+'EV3US' : TYPE_SENSOR_EV3_US_M0,		# Continuous measurement, distance, cm
 'EV3GYRO' : TYPE_SENSOR_EV3_GYRO_M0,			# Angle
 'EV3IR' : TYPE_SENSOR_EV3_INFRARED_M0,			# Proximity, 0 to 100
 'EV3TOUCH' : TYPE_SENSOR_EV3_TOUCH_DEBOUNCE,	# EV3 Touch sensor, debounced.
@@ -79,9 +96,18 @@ stype = { 'EV3US' : TYPE_SENSOR_EV3_US_M0,		# Continuous measurement, distance, 
 'COLOR' : TYPE_SENSOR_COLOR_FULL ,
 'RAW' : TYPE_SENSOR_RAW,
 'TEMP' : TYPE_SENSOR_RAW,
-'FLEX' : TYPE_SENSOR_RAW}   
+'FLEX' : TYPE_SENSOR_RAW
+}   
 
-BrickPiSetup()
+if BrickPiSetup()==0:
+    print "serial connection ok"
+else:
+    print "serial connection did not start"
+    sys.exit()
+
+# activate all motors by default
+BrickPi.MotorEnable = [1,1,1,1]
+BrickPi.MotorSpeed  = [0,0,0,0]
 
 
 def comp(val , case):
@@ -108,7 +134,6 @@ def comp(val , case):
         temp-=273
         return round(temp,2)
 
-running = False
 
 class myThread (threading.Thread):      #This thread is used for continuous transmission to BPi while main thread takes care of Rx/Tx Broadcasts of Scratch
     def __init__(self, threadID, name, counter):
@@ -117,12 +142,18 @@ class myThread (threading.Thread):      #This thread is used for continuous tran
         self.name = name
         self.counter = counter
     def run(self):
+        global updateSensorValueRunning
+        print "starting thread"
         while running:
-            BrickPiUpdateValues()       # Ask BrickPi to update values for sensors/motors
+            if updateSensorValueRunning==0:
+                updateSensorValueRunning=1
+                BrickPiUpdateValues()       # Ask BrickPi to update values for
+                updateSensorValueRunning=0
             time.sleep(.2)              # sleep for 200 ms
 
 thread1 = myThread(1, "Thread-1", 1)        #Setup and start the thread
 thread1.setDaemon(True)
+
 
 try:
     s.broadcast('READY')
@@ -131,14 +162,19 @@ except NameError:
 while True:
     try:
         m = s.receive()
-        
-        while m[0] == 'sensor-update' :
+        print m
+        while m==None or m[0] == 'sensor-update' :
             m = s.receive()
 
-        msg = m[1]
+        msg = m[1].upper()
         if msg == 'SETUP' :
             BrickPiSetupSensors()
+            running = True
+            print "running",running,thread1.is_alive()
+            if thread1.is_alive() == False:
+                thread1.start()  # this removes the need for the START broadcast
             print "BrickPi Scratch: Setting up sensors done"
+            print BrickPi.SensorType
         elif msg == 'START' :
             running = True
             if thread1.is_alive() == False:
@@ -147,55 +183,67 @@ while True:
         elif msg == 'STOP' :
             running = False
         elif msg == 'UPDATE' :
-            if sensor[1] :
-                if spec[1] :
-                    s.sensorupdate({'S1' : comp(BrickPi.Sensor[PORT_1],spec[1])})
-                else:                
-                    s.sensorupdate({'S1' : BrickPi.Sensor[PORT_1]})
-            if sensor[2] :
-                if spec[2] :
-                    s.sensorupdate({'S2' : comp(BrickPi.Sensor[PORT_2],spec[2])})
-                else :
-                    s.sensorupdate({'S2' : BrickPi.Sensor[PORT_2]})
-            if sensor[3] :
-                if spec[3] :
-                    s.sensorupdate({'S3' : comp(BrickPi.Sensor[PORT_3],spec[3])})
-                else :
-                    s.sensorupdate({'S3' : BrickPi.Sensor[PORT_3]})
-            if sensor[4] :
-                if spec[4] :
-                    s.sensorupdate({'S4' : comp(BrickPi.Sensor[PORT_4],spec[4])})
-                else:
-                    s.sensorupdate({'S4' : BrickPi.Sensor[PORT_4]})
+            if debug:
+                print "Update message received" 
+            if running==False:
+                raise SetupNotRunError
+            
+            while True:
+                if updateSensorValueRunning==0: 
+                    updateSensorValueRunning=1
+                    BrickPiUpdateValues()
+                    updateSensorValueRunning=0
+                    break
+            
+            for i in range(4):
+                if sensor[i]:
+                    if spec[i]:
+                        s.sensorupdate({sensorbroadcasts[i] : comp(BrickPi.Sensor[PORT_1+i],spec[i])})
+                        if debug:
+                            print "comp:",sensorbroadcasts[i],BrickPi.Sensor[PORT_1+i],"\n"
+                    else:                
+                        s.sensorupdate({sensorbroadcasts[i] : BrickPi.Sensor[PORT_1+i]})
+                        if debug:
+                            print "norm:",sensorbroadcasts[i],BrickPi.Sensor[PORT_1+i],"\n"
             s.broadcast('UPDATED')
-        elif msg[:2] == 'S1' :
+
+        elif msg[:2] in sensorbroadcasts:
+            whichsensor = sensorbroadcasts.index(msg[:2])
             if msg[2:].strip() == 'FLEX' :
-                spec[1] = 1
+                spec[whichsensor] = 1
             elif msg[2:].strip() == 'TEMP' :
-                spec[1] = 2
-            BrickPi.SensorType[PORT_1] = stype[msg[2:].strip()]
-            sensor[1] = True
-        elif msg[:2] == 'S2' :
-            if msg[2:].strip() == 'FLEX' :
-                spec[2] = 1
-            elif msg[2:].strip() == 'TEMP' :
-                spec[2] = 2
-            BrickPi.SensorType[PORT_2] = stype[msg[2:].strip()]
-            sensor[2] = True
-        elif msg[:2] == 'S3' :
-            if msg[2:].strip() == 'FLEX' :
-                spec[3] = 1
-            elif msg[2:].strip() == 'TEMP' :
-                spec[3] = 2
-            BrickPi.SensorType[PORT_3] = stype[msg[2:].strip()]
-            sensor[3] = True
-        elif msg[:2] == 'S4' :
-            if msg[2:].strip() == 'FLEX' :
-                spec[4] = 1
-            elif msg[2:].strip() == 'TEMP' :
-                spec[4] = 2
-            BrickPi.SensorType[PORT_4] = stype[msg[2:].strip()]
-            sensor[4] = True
+                spec[whichsensor] = 2
+            BrickPi.SensorType[whichsensor+PORT_1] = stype[msg[2:].strip()]
+            sensor[whichsensor]=True
+
+        # elif msg[:2] == 'S1' :
+        #     if msg[2:].strip() == 'FLEX' :
+        #         spec[1] = 1
+        #     elif msg[2:].strip() == 'TEMP' :
+        #         spec[1] = 2
+        #     BrickPi.SensorType[PORT_1] = stype[msg[2:].strip()]
+        #     sensor[1] = True
+        # elif msg[:2] == 'S2' :
+        #     if msg[2:].strip() == 'FLEX' :
+        #         spec[2] = 1
+        #     elif msg[2:].strip() == 'TEMP' :
+        #         spec[2] = 2
+        #     BrickPi.SensorType[PORT_2] = stype[msg[2:].strip()]
+        #     sensor[2] = True
+        # elif msg[:2] == 'S3' :
+        #     if msg[2:].strip() == 'FLEX' :
+        #         spec[3] = 1
+        #     elif msg[2:].strip() == 'TEMP' :
+        #         spec[3] = 2
+        #     BrickPi.SensorType[PORT_3] = stype[msg[2:].strip()]
+        #     sensor[3] = True
+        # elif msg[:2] == 'S4' :
+        #     if msg[2:].strip() == 'FLEX' :
+        #         spec[4] = 1
+        #     elif msg[2:].strip() == 'TEMP' :
+        #         spec[4] = 2
+        #     BrickPi.SensorType[PORT_4] = stype[msg[2:].strip()]
+        #     sensor[4] = True
         elif msg == 'MA E' or msg == 'MAE' :
             BrickPi.MotorEnable[PORT_A] = 1
         elif msg == 'MB E' or msg == 'MBE' :
@@ -236,3 +284,5 @@ while True:
 				break;
 			except scratch.ScratchError:
 				print "BrickPi Scratch: Scratch is either not opened or remote sensor connections aren't enabled\n..............................\n"
+    except SetupNotRunError as e:
+        print "\nSETUP message was not broadcast from Scratch. Need SETUP broadcast message to start"
